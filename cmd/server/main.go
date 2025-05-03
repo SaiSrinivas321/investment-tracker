@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"investment-tracker/internal/db"
 	"investment-tracker/internal/handlers"
@@ -24,6 +25,10 @@ func main() {
 	http.HandleFunc("/investments", handlers.InvestmentsHandler(investmentService))
 	http.HandleFunc("/investments/aggregate", handlers.AggregateInvestmentsHandler(investmentService))
 
-	log.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Println("Server started at port:", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
