@@ -2,7 +2,9 @@ package services
 
 import (
 	"database/sql"
+	"fmt"
 	"investment-tracker/internal/models"
+	"strings"
 )
 
 type InvestmentService struct {
@@ -46,24 +48,63 @@ func (s *InvestmentService) ListInvestments() ([]models.Investment, error) {
 	return investments, nil
 }
 
-func (s *InvestmentService) AggregateInvestments() ([]models.AggregateInvestment, error) {
-	rows, err := s.db.Query(`SELECT asset_type, account_name, SUM(quantity) as total_quantity, SUM(invested_amount) as total_investment
-	                       FROM investments
-	                       GROUP BY asset_type, account_name`)
+// AggregateInvestments aggregates investment data based on filters and group by fields
+func (s *InvestmentService) AggregateInvestments(filters map[string]interface{}, groupByFields []string) ([]models.AggregateInvestment, error) {
+	// Construct the base query
+	query := `SELECT asset_type, account_name, SUM(invested_amount) AS total_investment 
+              FROM investments`
+
+	// Prepare conditions for the WHERE clause
+	var conditions []string
+	var args []interface{}
+	placeholderIndex := 1 // PostgreSQL parameterized query placeholder index
+
+	// Add filter conditions to the WHERE clause
+	for key, value := range filters {
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", key, placeholderIndex))
+		args = append(args, value)
+		placeholderIndex++
+	}
+
+	// Append WHERE clause if any conditions are present
+	if len(conditions) > 0 {
+		query = fmt.Sprintf("%s WHERE %s", query, strings.Join(conditions, " AND "))
+	}
+
+	// Ensure asset_type is always included in the GROUP BY clause
+	groupByFields = appendIfMissing(groupByFields, "asset_type")
+	groupByFields = appendIfMissing(groupByFields, "account_name") // Ensure account_name is also in GROUP BY if selected
+
+	// Add GROUP BY clause
+	query += fmt.Sprintf(" GROUP BY %s", strings.Join(groupByFields, ", "))
+
+	// Execute the query with the provided filters and arguments
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error executing query: %w", err)
 	}
 	defer rows.Close()
 
-	aggregates := []models.AggregateInvestment{}
+	// Collect results from the query
+	var aggregates []models.AggregateInvestment
 	for rows.Next() {
 		var agg models.AggregateInvestment
-		err := rows.Scan(&agg.AssetType, &agg.AccountName, &agg.TotalQuantity, &agg.TotalInvestment)
-		if err != nil {
-			return nil, err
+		if err := rows.Scan(&agg.AssetType, &agg.AccountName, &agg.TotalInvestment); err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		aggregates = append(aggregates, agg)
 	}
 
+	// Return the aggregated results
 	return aggregates, nil
+}
+
+// appendIfMissing ensures "asset_type" and "account_name" are always included in the GROUP BY clause
+func appendIfMissing(slice []string, value string) []string {
+	for _, v := range slice {
+		if v == value {
+			return slice
+		}
+	}
+	return append(slice, value)
 }
