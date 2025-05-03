@@ -49,7 +49,7 @@ func (s *InvestmentService) ListInvestments() ([]models.Investment, error) {
 }
 
 // AggregateInvestments aggregates investment data based on filters and group by fields
-func (s *InvestmentService) AggregateInvestments(filters map[string]interface{}, groupByFields []string) ([]models.AggregateInvestment, error) {
+func (s *InvestmentService) AggregateInvestments(filters map[string]interface{}, groupByFields []string) (map[string]interface{}, error) {
 	// Construct the base query
 	query := `SELECT asset_type, account_name, SUM(invested_amount) AS total_investment 
               FROM investments`
@@ -87,16 +87,25 @@ func (s *InvestmentService) AggregateInvestments(filters map[string]interface{},
 
 	// Collect results from the query
 	var aggregates []models.AggregateInvestment
+	var cumulativeInvestment float64
+
 	for rows.Next() {
 		var agg models.AggregateInvestment
 		if err := rows.Scan(&agg.AssetType, &agg.AccountName, &agg.TotalInvestment); err != nil {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		aggregates = append(aggregates, agg)
+		cumulativeInvestment += agg.TotalInvestment
 	}
 
-	// Return the aggregated results
-	return aggregates, nil
+	// Construct the response with the cumulative investment and the individual aggregates
+	response := map[string]interface{}{
+		"cuminvestment": cumulativeInvestment,
+		"investments":   aggregates,
+	}
+
+	// Return the aggregated results along with the cumulative investment
+	return response, nil
 }
 
 // appendIfMissing ensures "asset_type" and "account_name" are always included in the GROUP BY clause
