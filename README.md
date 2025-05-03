@@ -5,7 +5,6 @@ A simple backend API to track investments in various asset types (stocks, gold, 
 ### Built with:
 - **Go (Golang)**
 - **PostgreSQL**
-- **Clean Architecture**
 
 ---
 
