@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"investment-tracker/internal/models"
+	"log"
 	"strings"
 )
 
@@ -16,13 +17,20 @@ func NewInvestmentService(db *sql.DB) *InvestmentService {
 }
 
 func (s *InvestmentService) AddInvestment(inv models.Investment) (models.Investment, error) {
-	query := `INSERT INTO investments (asset_type, asset_name, quantity, invested_amount, account_name)
-	          VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`
-	err := s.db.QueryRow(query, inv.AssetType, inv.AssetName, inv.Quantity, inv.InvestedAmount, inv.AccountName).
-		Scan(&inv.ID, &inv.CreatedAt)
+	const query = `
+		INSERT INTO investments (asset_type, asset_name, quantity, invested_amount, account_name)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (asset_type, asset_name, account_name)
+		DO UPDATE SET
+			quantity = investments.quantity + EXCLUDED.quantity,
+			invested_amount = investments.invested_amount + EXCLUDED.invested_amount
+		RETURNING id, created_at
+	`
 
-	if err != nil {
-		return inv, err
+	row := s.db.QueryRow(query, inv.AssetType, inv.AssetName, inv.Quantity, inv.InvestedAmount, inv.AccountName)
+	if err := row.Scan(&inv.ID, &inv.CreatedAt); err != nil {
+		log.Printf("Database error: %v", err)
+		return models.Investment{}, fmt.Errorf("AddInvestment: %w", err)
 	}
 
 	return inv, nil
